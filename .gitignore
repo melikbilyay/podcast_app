@@ -7,5 +7,5 @@ node_modules/
 # @end expo-cli
 node_modules
 
-config/firebase.js
+config/firebase.tsx
 node_modules
