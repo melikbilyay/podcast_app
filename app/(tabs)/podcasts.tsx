@@ -5,8 +5,10 @@ import { ThemedView } from '@/components/ThemedView';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { collection, getDocs } from 'firebase/firestore';
+import {NativeStackNavigationProp} from "@react-navigation/native-stack";
 
 import { db, storage } from '@/config/firebase';
+import Stack from 'expo-router/build/layouts/Stack';
 
 // Define types for podcast
 type Podcast = {
@@ -20,6 +22,11 @@ type Podcast = {
 };
 
 const categories = ['Tümü', 'İlişkiler', 'Kişisel', 'Sağlık'];
+export type RootStackParamList = {
+  Home: undefined;
+  Settings: undefined;
+  '(menu)/PodcastDetails': { podcast: Podcast }; // PodcastDetails ekranına podcast objesi gönderilecek
+};
 
 const PodcastItem: React.FC<{ item: Podcast; onPress: (podcast: Podcast) => void }> = ({ item, onPress }) => (
     <TouchableOpacity style={styles.podcastItem} onPress={() => onPress(item)}>
@@ -32,11 +39,12 @@ const PodcastItem: React.FC<{ item: Podcast; onPress: (podcast: Podcast) => void
 );
 
 export default function PodcastsScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tümü');
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [loading, setLoading] = useState(true);
-  const navigation = useNavigation();
+
 
   useEffect(() => {
     const fetchPodcasts = async () => {
@@ -75,7 +83,7 @@ export default function PodcastsScreen() {
       );
 
   const handlePress = (podcast: Podcast) => {
-    navigation.navigate('podcastDetails', { podcast });
+    navigation.navigate('(menu)/PodcastDetails' , { podcast });
   };
 
   const handlePlay = () => {
