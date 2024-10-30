@@ -1,34 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, TextInput, FlatList, TouchableOpacity, Image } from 'react-native';
+import {
+  StyleSheet,
+  View,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+} from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { collection, getDocs } from 'firebase/firestore';
-import {NativeStackNavigationProp} from "@react-navigation/native-stack";
-
-import { db, storage } from '@/config/firebase';
-import Stack from 'expo-router/build/layouts/Stack';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import MusicPlayer from '@/components/MusicPlayer';
+import { db } from '@/config/firebase';
 
 // Define types for podcast
 type Podcast = {
   id: string;
   title: string;
-  audioURL: string; // URL string for audio from Firebase Storage
-  coverURL: string; // URL string for image from Firebase Storage
+  audioURL: string; // URL for audio from Firebase Storage
+  coverURL: string; // URL for cover image from Firebase Storage
   category: string;
   description: string;
-  createdAt: string; // You may want to format this date later for display
+  createdAt: string; // Formatted date string
 };
 
 const categories = ['Tümü', 'İlişkiler', 'Kişisel', 'Sağlık'];
+
 export type RootStackParamList = {
   Home: undefined;
   Settings: undefined;
-  '(menu)/PodcastDetails': { podcast: Podcast }; // PodcastDetails ekranına podcast objesi gönderilecek
+  '(menu)/PodcastDetails': { podcast: Podcast }; // Pass podcast object to PodcastDetails screen
 };
 
-const PodcastItem: React.FC<{ item: Podcast; onPress: (podcast: Podcast) => void }> = ({ item, onPress }) => (
+// PodcastItem component for individual podcast display
+const PodcastItem: React.FC<{ item: Podcast; onPress: (podcast: Podcast) => void }> = ({
+                                                                                         item,
+                                                                                         onPress,
+                                                                                       }) => (
     <TouchableOpacity style={styles.podcastItem} onPress={() => onPress(item)}>
       <Image source={{ uri: item.coverURL }} style={styles.podcastImage} />
       <View style={styles.podcastDetails}>
@@ -44,30 +56,45 @@ export default function PodcastsScreen() {
   const [selectedCategory, setSelectedCategory] = useState('Tümü');
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPodcast, setSelectedPodcast] = useState<Podcast | null>(null);
+  const [playerVisible, setPlayerVisible] = useState(false);
 
+  const handlePress = (podcast: Podcast) => {
+    setSelectedPodcast(podcast);
+    setPlayerVisible(true);
+  };
 
+  const handleClosePlayer = () => {
+    setPlayerVisible(false);
+    setSelectedPodcast(null);
+  };
+
+  // Fetch podcasts from Firestore
   useEffect(() => {
     const fetchPodcasts = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, 'podcasts')); // Fetch podcasts collection from Firestore
+        const querySnapshot = await getDocs(collection(db, 'podcasts'));
         const fetchedPodcasts: Podcast[] = [];
 
-        for (const doc of querySnapshot.docs) {
+        // Map Firestore documents to Podcast array
+        querySnapshot.docs.forEach((doc) => {
           const podcastData = doc.data();
           fetchedPodcasts.push({
             id: doc.id,
             title: podcastData.title,
-            audioURL: podcastData.audioURL, // Store audio URL
-            coverURL: podcastData.coverURL,   // Store cover URL
+            audioURL: podcastData.audioURL,
+            coverURL: podcastData.coverURL,
             category: podcastData.category,
             description: podcastData.description,
-            createdAt: podcastData.createdAt.toDate().toLocaleString(), // Format date if needed
+            createdAt: podcastData.createdAt.toDate().toLocaleString(), // Format date
           });
-        }
+        });
 
         setPodcasts(fetchedPodcasts);
       } catch (error) {
         console.error('Error fetching podcasts: ', error);
+        setError('Podcast verileri yüklenirken bir hata oluştu.');
       } finally {
         setLoading(false);
       }
@@ -76,15 +103,12 @@ export default function PodcastsScreen() {
     fetchPodcasts();
   }, []);
 
-  const filteredPodcasts = podcasts
-      .filter(podcast =>
+  // Filter podcasts based on category and search input
+  const filteredPodcasts = podcasts.filter(
+      (podcast) =>
           (selectedCategory === 'Tümü' || podcast.category === selectedCategory) &&
           podcast.title.toLowerCase().includes(search.toLowerCase())
-      );
-
-  const handlePress = (podcast: Podcast) => {
-    navigation.navigate('(menu)/PodcastDetails' , { podcast });
-  };
+  );
 
   const handlePlay = () => {
     console.log('Play button pressed');
@@ -95,7 +119,16 @@ export default function PodcastsScreen() {
   };
 
   if (loading) {
-    return <ThemedText>Loading...</ThemedText>;
+    return (
+        <ThemedView style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#967d28" />
+          <ThemedText>Loading...</ThemedText>
+        </ThemedView>
+    );
+  }
+
+  if (error) {
+    return <ThemedText>{error}</ThemedText>;
   }
 
   return (
@@ -119,12 +152,12 @@ export default function PodcastsScreen() {
         </View>
 
         <View style={styles.categoryContainer}>
-          {categories.map(category => (
+          {categories.map((category) => (
               <TouchableOpacity
                   key={category}
                   style={[
                     styles.categoryButton,
-                    selectedCategory === category && styles.selectedCategoryButton
+                    selectedCategory === category && styles.selectedCategoryButton,
                   ]}
                   onPress={() => setSelectedCategory(category)}
               >
@@ -136,9 +169,14 @@ export default function PodcastsScreen() {
         <FlatList
             data={filteredPodcasts}
             renderItem={({ item }) => <PodcastItem item={item} onPress={handlePress} />}
-            keyExtractor={item => item.id}
+            keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
         />
+
+        {/* MusicPlayer component */}
+        {playerVisible && selectedPodcast && (
+            <MusicPlayer podcast={selectedPodcast} onClose={handleClosePlayer} isVisible={playerVisible} />
+        )}
       </ThemedView>
   );
 }
@@ -148,6 +186,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FBF9F4',
     padding: 16,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FBF9F4',
   },
   searchInput: {
     height: 40,
@@ -172,8 +216,8 @@ const styles = StyleSheet.create({
     padding: 15,
     backgroundColor: '#fff',
     borderRadius: 8,
-    elevation: 1, // Add shadow for Android
-    shadowColor: '#000', // Add shadow for iOS
+    elevation: 1,
+    shadowColor: '#000',
     shadowOpacity: 0.2,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
@@ -182,7 +226,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     color: '#967d28',
-    marginLeft: 10, // Space between icon and text
+    marginLeft: 10,
   },
   categoryContainer: {
     flexDirection: 'row',
@@ -195,8 +239,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#fff',
     margin: 4,
-    elevation: 1, // Add shadow for Android
-    shadowColor: '#000', // Add shadow for iOS
+    elevation: 1,
+    shadowColor: '#000',
     shadowOpacity: 0.3,
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
@@ -214,26 +258,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
-    marginBottom: 10,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    elevation: 1, // Add shadow for Android
-    shadowColor: '#000', // Add shadow for iOS
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 2 },
+    borderBottomWidth: 1,
+    borderBottomColor: '#ddd',
   },
   podcastImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 100,
+    height: 100,
+    borderRadius: 8,
     marginRight: 10,
   },
   podcastDetails: {
     flex: 1,
-    justifyContent: 'center',
   },
   podcastTitle: {
     fontWeight: 'bold',
+    fontSize: 16,
   },
 });
