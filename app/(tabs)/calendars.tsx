@@ -1,100 +1,128 @@
 import React, { useEffect, useState } from 'react';
-import { StyleSheet, View, Image} from 'react-native';
-import { Calendar } from 'react-native-calendars';
+import { StyleSheet, View, FlatList, TouchableOpacity, Linking, Modal, Button, ScrollView } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
-import { db } from '@/config/firebase'; // Adjust import based on your project structure
+import { db } from '@/config/firebase'; // Projenizin yapısına göre import'u ayarlayın
 import { collection, getDocs } from 'firebase/firestore';
+import { Image } from 'expo-image';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function CalendarScreen() {
-    const [selectedDate, setSelectedDate] = useState<string>('');
     const [events, setEvents] = useState<any[]>([]);
-    const [markedDates, setMarkedDates] = useState<{ [key: string]: any }>({});
+    const [selectedEvent, setSelectedEvent] = useState<any>(null);
+    const [modalVisible, setModalVisible] = useState(false);
 
     // Fetch events from Firestore
     useEffect(() => {
         const fetchEvents = async () => {
-            const eventCollection = collection(db, 'events'); // Adjust collection name if needed
+            const eventCollection = collection(db, 'events');
             const eventSnapshot = await getDocs(eventCollection);
             const eventList = eventSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setEvents(eventList);
 
-            // Mark dates with events
-            const dateMarks: { [key: string]: any } = {};
-            eventList.forEach(event => {
-                const eventDate = event.date; // Make sure 'date' is in 'YYYY-MM-DD' format
-                if (!dateMarks[eventDate]) {
-                    dateMarks[eventDate] = { marked: true, dotColor: 'red',}; // Customize dot color if needed
-                }
-            });
-            setMarkedDates(dateMarks);
+            // Verileri kontrol et
+            console.log("Fetched events:", eventList);
+            setEvents(eventList);
         };
 
         fetchEvents();
     }, []);
 
-    const onDayPress = (day: { dateString: string }) => {
-        setSelectedDate(day.dateString);
+    const handleEventPress = (event: any) => {
+        setSelectedEvent(event);
+        setModalVisible(true);
     };
 
-    const getEventsForSelectedDate = () => {
-        return events.filter(event => event.date === selectedDate);
+    const openExternalLink = (url: string) => {
+        Linking.openURL(url).catch(err => console.error("An error occurred", err));
     };
 
-    const selectedEvents = getEventsForSelectedDate();
+    const renderEventItem = ({ item }: { item: any }) => {
+        // Açıklamadan sadece ilk 4 kelimeyi al
+        const shortDescription = item.description.split(' ').slice(0, 4).join(' ') + '...';
+
+        return (
+            <TouchableOpacity
+                style={styles.eventContainer}
+                activeOpacity={0.7}
+                onPress={() => handleEventPress(item)} // Etkinliğe tıklama
+            >
+                {/* Event Image */}
+                {item.coverURL && (
+                    <Image
+                        source={{ uri: item.coverURL }}
+                        style={styles.eventImage}
+                    />
+                )}
+
+                {/* Event Details */}
+                <View style={styles.eventDetails}>
+                    <View style={styles.eventHeader}>
+                        <Ionicons name="calendar-outline" size={16} color="#6C757D" />
+                        <ThemedText style={styles.eventDate}>
+                            {item.date || "Tarih bilgisi yok"}
+                        </ThemedText>
+                    </View>
+                    <ThemedText style={styles.eventTitle}>
+                        {item.title || "Başlık bilgisi yok"}
+                    </ThemedText>
+                    <ThemedText style={styles.eventText}>
+                        {shortDescription} {/* Kısa açıklama */}
+                    </ThemedText>
+                </View>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <ThemedView style={styles.container}>
             <View style={styles.header}>
-                <ThemedText type="title">Takvim</ThemedText>
+                <ThemedText type="title">Etkinlikler</ThemedText>
             </View>
 
-            <Calendar
-                onDayPress={onDayPress}
-                markedDates={{
-                    ...markedDates,
-                    [selectedDate]: { selected: true, marked: true, selectedColor: 'blue' },
-                }}
-                theme={{
-                    todayTextColor: '#00adf5',
-                    arrowColor: 'orange',
-                    textDayFontWeight: 'bold',
-                    textMonthFontWeight: 'bold',
-                    textDayHeaderFontWeight: 'bold',
-                    selectedDayBackgroundColor: '#00adf5',
-                    selectedDayTextColor: '#ffffff',
-                }}
-                style={styles.calendar}
-            />
-
-            {selectedDate ? (
-                <View>
-                    <ThemedText style={styles.selectedDateText}>
-                        Seçilen Tarih: {selectedDate}
-                    </ThemedText>
-                    {selectedEvents.length > 0 ? (
-                        selectedEvents.map(event => (
-                            <View key={event.id} style={styles.eventContainer}>
-                                {/* Display event title and description */}
-                                <ThemedText style={styles.eventText}>
-                                    {event.title} - {event.description}
-                                </ThemedText>
-
-                                {/* Display event cover image */}
-                                {event.coverURL && (
-                                    <Image
-                                        source={{ uri: event.coverURL }}
-                                        style={styles.eventImage}
-                                    />
-                                )}
-                            </View>
-                        ))
-                    ) : (
-                        <ThemedText style={styles.eventText}>Bu tarihte etkinlik yok.</ThemedText>
-                    )}
-                </View>
+            {events.length > 0 ? (
+                <FlatList
+                    data={events}
+                    renderItem={renderEventItem}
+                    keyExtractor={item => item.id}
+                    contentContainerStyle={styles.eventList}
+                />
             ) : (
-                <ThemedText style={styles.selectedDateText}>Lütfen bir tarih seçin</ThemedText>
+                <ThemedText style={styles.eventText}>Henüz etkinlik yok.</ThemedText>
+            )}
+
+            {/* Modal for Event Details */}
+            {selectedEvent && (
+                <Modal
+                    transparent={true}
+                    animationType="slide"
+                    visible={modalVisible}
+                    onRequestClose={() => {
+                        setModalVisible(!modalVisible);
+                    }}
+                >
+                    <View style={styles.modalOverlay}>
+                        <View style={styles.modalContent}>
+                            <ThemedText type="title" style={styles.modalTitle}>{selectedEvent.title}</ThemedText>
+                            <ScrollView style={styles.scrollContainer}>
+                                <ThemedText style={styles.modalDescription}>{selectedEvent.description}</ThemedText>
+                            </ScrollView>
+                            <TouchableOpacity
+                                style={styles.button}
+                                onPress={() => openExternalLink(selectedEvent.url)}
+                            >
+                                <ThemedText style={styles.buttonText}>Hemen aramıza katıl !</ThemedText>
+                            </TouchableOpacity>
+                            <Button
+                                title="Kapat"
+                                color="#752F1F"
+                                onPress={() => {
+                                    setModalVisible(false);
+                                    setSelectedEvent(null);
+                                }}
+                            />
+                        </View>
+                    </View>
+                </Modal>
             )}
         </ThemedView>
     );
@@ -104,7 +132,8 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         padding: 16,
-        backgroundColor: '#fff',
+        backgroundColor: '#F8F9FA',
+
     },
     header: {
         flexDirection: 'row',
@@ -112,30 +141,98 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         marginTop: 50,
     },
-    calendar: {
-        borderRadius: 10,
-        elevation: 3,
-    },
-    selectedDateText: {
-        marginTop: 16,
-        fontSize: 16,
-        textAlign: 'center',
-        color: '#333',
+    eventList: {
+        paddingBottom: 16,
     },
     eventContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        padding: 16,
+        borderRadius: 10,
+        backgroundColor: '#ffffff',
         marginTop: 16,
-        alignItems: 'center',
-    },
-    eventText: {
-        fontSize: 14,
-        textAlign: 'center',
-        color: '#333',
-        marginBottom: 8,
+        marginBottom: 12,
+        borderColor: '#E3E3E3',
+        borderWidth: 1,
+        shadowColor: '#000',
+        shadowOffset: {
+            width: 0,
+            height: 2,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+
     },
     eventImage: {
-        width: 200,
-        height: 200,
+        width: 80,
+        height: 80,
         borderRadius: 10,
-        marginTop: 10,
+        marginRight: 16,
+        backgroundColor: '#E5E5E5',
+    },
+    eventDetails: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    eventHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    eventDate: {
+        fontSize: 14,
+        color: '#6C757D',
+        marginLeft: 4,
+    },
+    eventTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#967d28',
+        marginBottom: 4,
+    },
+    eventText: {
+        fontSize: 16,
+        color: '#333',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    modalContent: {
+        width: '80%',
+        backgroundColor: '#FFF',
+        borderRadius: 10,
+        padding: 20,
+        alignItems: 'center',
+        elevation: 5,
+    },
+    modalTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 10,
+
+    },
+    modalDescription: {
+        fontSize: 16,
+        marginBottom: 20,
+        textAlign: 'center',
+    },
+    scrollContainer: {
+        maxHeight: 200, // Max yükseklik ayarı, kaydırma için
+        marginBottom: 20,
+    },
+    button: {
+        backgroundColor: '#752F1F',
+        padding: 12,
+        borderRadius: 8,
+        alignItems: 'center',
+        marginBottom: 10,
+    },
+    buttonText: {
+        color: '#FFFFFF',
+        fontWeight: 'bold',
     },
 });

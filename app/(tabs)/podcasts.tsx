@@ -5,7 +5,6 @@ import {
   TextInput,
   FlatList,
   TouchableOpacity,
-  Image,
   ActivityIndicator,
 } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
@@ -16,27 +15,20 @@ import { collection, getDocs } from 'firebase/firestore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import MusicPlayer from '@/components/MusicPlayer';
 import { db } from '@/config/firebase';
+import { Image } from 'expo-image';
 
-// Define types for podcast
 type Podcast = {
   id: string;
   title: string;
-  audioURL: string; // URL for audio from Firebase Storage
-  coverURL: string; // URL for cover image from Firebase Storage
+  audioURL: string;
+  coverURL: string;
   category: string;
   description: string;
-  createdAt: string; // Formatted date string
+  createdAt: string;
 };
 
 const categories = ['Tümü', 'İlişkiler', 'Kişisel', 'Sağlık'];
 
-export type RootStackParamList = {
-  Home: undefined;
-  Settings: undefined;
-  '(menu)/PodcastDetails': { podcast: Podcast }; // Pass podcast object to PodcastDetails screen
-};
-
-// PodcastItem component for individual podcast display
 const PodcastItem: React.FC<{ item: Podcast; onPress: (podcast: Podcast) => void }> = ({
                                                                                          item,
                                                                                          onPress,
@@ -51,7 +43,6 @@ const PodcastItem: React.FC<{ item: Podcast; onPress: (podcast: Podcast) => void
 );
 
 export default function PodcastsScreen() {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tümü');
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
@@ -61,6 +52,9 @@ export default function PodcastsScreen() {
   const [playerVisible, setPlayerVisible] = useState(false);
 
   const handlePress = (podcast: Podcast) => {
+    if (selectedPodcast) {
+      handleClosePlayer(); // Close the currently playing podcast
+    }
     setSelectedPodcast(podcast);
     setPlayerVisible(true);
   };
@@ -70,14 +64,12 @@ export default function PodcastsScreen() {
     setSelectedPodcast(null);
   };
 
-  // Fetch podcasts from Firestore
   useEffect(() => {
     const fetchPodcasts = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, 'podcasts'));
         const fetchedPodcasts: Podcast[] = [];
 
-        // Map Firestore documents to Podcast array
         querySnapshot.docs.forEach((doc) => {
           const podcastData = doc.data();
           fetchedPodcasts.push({
@@ -87,7 +79,7 @@ export default function PodcastsScreen() {
             coverURL: podcastData.coverURL,
             category: podcastData.category,
             description: podcastData.description,
-            createdAt: podcastData.createdAt.toDate().toLocaleString(), // Format date
+            createdAt: podcastData.createdAt.toDate().toLocaleString(),
           });
         });
 
@@ -103,7 +95,6 @@ export default function PodcastsScreen() {
     fetchPodcasts();
   }, []);
 
-  // Filter podcasts based on category and search input
   const filteredPodcasts = podcasts.filter(
       (podcast) =>
           (selectedCategory === 'Tümü' || podcast.category === selectedCategory) &&
@@ -111,18 +102,26 @@ export default function PodcastsScreen() {
   );
 
   const handlePlay = () => {
-    console.log('Play button pressed');
+    if (filteredPodcasts.length > 0) {
+      setSelectedPodcast(filteredPodcasts[0]); // Set the first podcast as the selected podcast
+      setPlayerVisible(true); // Show the music player
+    }
   };
 
   const handleShuffle = () => {
-    console.log('Shuffle button pressed');
+    if (filteredPodcasts.length > 0) {
+      // Get a random index
+      const randomIndex = Math.floor(Math.random() * filteredPodcasts.length);
+      setSelectedPodcast(filteredPodcasts[randomIndex]); // Set a random podcast as the selected podcast
+      setPlayerVisible(true); // Show the music player
+    }
   };
 
   if (loading) {
     return (
         <ThemedView style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#967d28" />
-          <ThemedText>Loading...</ThemedText>
+          <ThemedText>Yükleniyor...</ThemedText>
         </ThemedView>
     );
   }
@@ -256,14 +255,15 @@ const styles = StyleSheet.create({
   },
   podcastItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    backgroundColor: '#fff',
     padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ddd',
+    borderRadius: 8,
+    marginBottom: 10,
+    elevation: 1,
   },
   podcastImage: {
-    width: 100,
-    height: 100,
+    width: 70,
+    height: 70,
     borderRadius: 8,
     marginRight: 10,
   },
@@ -272,6 +272,5 @@ const styles = StyleSheet.create({
   },
   podcastTitle: {
     fontWeight: 'bold',
-    fontSize: 16,
   },
 });

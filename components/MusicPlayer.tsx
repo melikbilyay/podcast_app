@@ -4,9 +4,22 @@ import { Audio } from 'expo-av';
 import { Image } from 'expo-image';
 import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
+import { AVPlaybackStatus, AVPlaybackStatusSuccess } from 'expo-av';
 
-const MusicPlayer = ({ isVisible, onClose, podcast }) => {
-    const [sound, setSound] = useState();
+interface Podcast {
+    audioURL: string;
+    coverURL: string;
+    title: string;
+}
+
+interface MusicPlayerProps {
+    isVisible: boolean;
+    onClose: () => void;
+    podcast: Podcast;
+}
+
+const MusicPlayer: React.FC<MusicPlayerProps> = ({ isVisible, onClose, podcast }) => {
+    const [sound, setSound] = useState<Audio.Sound | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [position, setPosition] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -15,32 +28,55 @@ const MusicPlayer = ({ isVisible, onClose, podcast }) => {
 
     useEffect(() => {
         if (isVisible) {
-            setupPlayer();
+            loadAudio();
         } else {
             unloadAudio();
         }
-    }, [isVisible]);
+    }, [isVisible, podcast]);
 
-    const setupPlayer = async () => {
-        const { sound } = await Audio.Sound.createAsync(
+    const loadAudio = async () => {
+        await unloadAudio();
+        const { sound: newSound } = await Audio.Sound.createAsync(
             { uri: podcast.audioURL },
             { shouldPlay: true }
         );
-        setSound(sound);
-        sound.setOnPlaybackStatusUpdate(updatePlaybackStatus);
-        setDuration((await sound.getStatusAsync()).durationMillis);
+
+        setSound(newSound);
+        newSound.setOnPlaybackStatusUpdate(updatePlaybackStatus);
+
+        const status = await newSound.getStatusAsync();
+        if (status.isLoaded) {
+            setDuration(status.durationMillis || 0);
+            setPosition(0);
+        }
     };
 
-    const updatePlaybackStatus = (status) => {
-        setIsPlaying(status.isPlaying);
-        setPosition(status.positionMillis);
+    const updatePlaybackStatus = (status: AVPlaybackStatus) => {
+        if (status.isLoaded) {
+            const playbackStatus = status as AVPlaybackStatusSuccess;
+            setIsPlaying(playbackStatus.isPlaying);
+            setPosition(playbackStatus.positionMillis);
+            setDuration(playbackStatus.durationMillis || 0);
+        }
     };
 
     const playPause = async () => {
-        if (isPlaying) {
+        if (isPlaying && sound) {
             await sound.pauseAsync();
-        } else {
+            setIsPlaying(false);
+        } else if (sound) {
             await sound.playAsync();
+            setIsPlaying(true);
+        }
+    };
+
+    const unloadAudio = async () => {
+        if (sound) {
+            await sound.unloadAsync();
+            setSound(null);
+            setIsPlaying(false);
+            setPosition(0);
+            setDuration(0);
         }
     };
 
@@ -53,17 +89,16 @@ const MusicPlayer = ({ isVisible, onClose, podcast }) => {
         }
     };
 
-    const unloadAudio = async () => {
-        if (sound) {
-            await sound.unloadAsync();
-            setSound(null);
-        }
-    };
-
-    const handleSliderValueChange = async (value) => {
+    const handleSliderValueChange = async (value: number) => {
         if (sound) {
             await sound.setPositionAsync(value);
         }
+    };
+
+    const formatTime = (millis: number) => {
+        const minutes = Math.floor(millis / 60000);
+        const seconds = Math.floor((millis % 60000) / 1000);
+        return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
     };
 
     useEffect(() => {
@@ -78,8 +113,27 @@ const MusicPlayer = ({ isVisible, onClose, podcast }) => {
     const updatePosition = async () => {
         if (sound) {
             const status = await sound.getStatusAsync();
-            setPosition(status.positionMillis);
-            setDuration(status.durationMillis);
+            if (status.isLoaded) {
+                const playbackStatus = status as AVPlaybackStatusSuccess;
+                setPosition(playbackStatus.positionMillis || 0);
+                setDuration(playbackStatus.durationMillis || 0);
+            }
+        }
+    };
+
+    const seekForward = async () => {
+        if (sound) {
+            const newPosition = Math.min(position + 10000, duration); // Seek forward 10 seconds
+            await sound.setPositionAsync(newPosition);
+            setPosition(newPosition);
+        }
+    };
+
+    const seekBackward = async () => {
+        if (sound) {
+            const newPosition = Math.max(position - 10000, 0); // Seek backward 10 seconds
+            await sound.setPositionAsync(newPosition);
+            setPosition(newPosition);
         }
     };
 
@@ -89,16 +143,15 @@ const MusicPlayer = ({ isVisible, onClose, podcast }) => {
             setTranslateY(gestureState.dy);
         },
         onPanResponderRelease: (evt, gestureState) => {
-            if (gestureState.dy > 100) {
+            if (gestureState.dy > 50) {
                 setIsMinimized(true);
-            } else if (gestureState.dy < -100) {
+            } else if (gestureState.dy < -50) {
                 setIsMinimized(false);
             }
             setTranslateY(0);
         },
     });
 
-    // Mini Player Layout
     if (isMinimized) {
         return (
             <View style={styles.miniPlayerContainer}>
@@ -116,7 +169,6 @@ const MusicPlayer = ({ isVisible, onClose, podcast }) => {
         );
     }
 
-    // Full-Screen Player Layout
     return (
         <View style={[styles.fullPlayerContainer, { transform: [{ translateY }] }]} {...panResponder.panHandlers}>
             <TouchableOpacity onPress={handleClose} style={styles.closeButtonfull}>
@@ -130,13 +182,23 @@ const MusicPlayer = ({ isVisible, onClose, podcast }) => {
                 maximumValue={duration}
                 value={position}
                 onValueChange={handleSliderValueChange}
-                thumbTintColor="#752F1F" // Change thumb color
-                minimumTrackTintColor="#752F1F" // Change minimum track color
-                maximumTrackTintColor="#C0C0C0" // Change maximum track color
+                thumbTintColor="#752F1F"
+                minimumTrackTintColor="#752F1F"
+                maximumTrackTintColor="#C0C0C0"
             />
+            <View style={styles.timerContainer}>
+                <Text style={styles.timerText}>{formatTime(position)}</Text>
+                <Text style={styles.timerText}>{formatTime(duration)}</Text>
+            </View>
             <View style={styles.controls}>
+                <TouchableOpacity onPress={seekBackward} style={styles.seekButton}>
+                    <Ionicons name="play-back" size={34} color="#752F1F" />
+                </TouchableOpacity>
                 <TouchableOpacity onPress={playPause} style={styles.playPauseButton}>
-                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={24} color="#FFF" />
+                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={34} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={seekForward} style={styles.seekButton}>
+                    <Ionicons name="play-forward" size={34} color="#752F1F" />
                 </TouchableOpacity>
             </View>
         </View>
@@ -150,7 +212,7 @@ const styles = StyleSheet.create({
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: '#FDECEF', // Background color
+        backgroundColor: '#FDECEF',
         padding: 20,
         justifyContent: 'center',
         alignItems: 'center',
@@ -185,6 +247,7 @@ const styles = StyleSheet.create({
     miniPlayerText: {
         fontSize: 16,
         fontWeight: 'bold',
+        color: '#752F1F',
     },
     miniPlayPauseButton: {
         padding: 10,
@@ -203,29 +266,38 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         color: '#752F1F',
         marginBottom: 10,
-        textAlign: 'center',
     },
     coverImage: {
-        width: 240,
-        height: 240,
+        width: 220,
+        height: 220,
         borderRadius: 10,
-        marginBottom: 10,
+        marginBottom: 20,
     },
     slider: {
         width: '100%',
         height: 40,
-        marginBottom: 20,
+        marginBottom: 10,
+    },
+    timerContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        width: '100%',
+    },
+    timerText: {
         color: '#752F1F',
     },
     controls: {
         flexDirection: 'row',
-        justifyContent: 'center',
+        justifyContent: 'space-around',
+        width: '100%',
     },
     playPauseButton: {
+        padding: 15,
+        backgroundColor: '#752F1F',
+        borderRadius: 20,
+    },
+    seekButton: {
         padding: 10,
-        backgroundColor: '#752F1F', // Button background color
-        borderRadius: 5,
-        elevation: 5,
     },
 });
 

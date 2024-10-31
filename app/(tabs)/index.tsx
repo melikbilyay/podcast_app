@@ -1,44 +1,38 @@
-import React from 'react';
-import { StyleSheet, View, Image, Dimensions, FlatList, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View, Dimensions, FlatList, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Carousel from 'react-native-reanimated-carousel';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import {NativeStackNavigationProp} from "@react-navigation/native-stack";
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { db } from '@/config/firebase';
+import { collection, getDocs } from 'firebase/firestore';
+import { Image } from 'expo-image';
 
 const { width } = Dimensions.get('window');
 
 interface CarouselItemType {
     id: string;
     title: string;
-    image: any; // Consider replacing `any` with a more specific type like `ImageSourcePropType` if needed
+    image: any;
 }
 
 interface PodcastCardType {
     id: string;
     title: string;
-    image: any; // Same as above
+    audioURL: string;
+    coverURL: string;
+    category: string;
+    description: string;
+    createdAt: string;
 }
-
 
 const carouselData = [
     { id: '1', title: 'Podcast 1', image: require('@/assets/images/icon.png') },
     { id: '2', title: 'Podcast 2', image: require('@/assets/images/icon.png') },
     { id: '3', title: 'Podcast 3', image: require('@/assets/images/icon.png') },
-];
-
-const podcastData = [
-    { id: '4', title: 'New Podcast 1', image: require('@/assets/images/icon.png') },
-    { id: '5', title: 'New Podcast 2', image: require('@/assets/images/icon.png') },
-    { id: '6', title: 'New Podcast 3', image: require('@/assets/images/icon.png') },
-];
-
-const recommendedData = [
-    { id: '7', title: 'Recommended Podcast 1', image: require('@/assets/images/icon.png') },
-    { id: '8', title: 'Recommended Podcast 2', image: require('@/assets/images/icon.png') },
-    { id: '9', title: 'Recommended Podcast 3', image: require('@/assets/images/icon.png') },
 ];
 
 const CarouselItem: React.FC<{ item: CarouselItemType }> = ({ item }) => (
@@ -50,17 +44,71 @@ const CarouselItem: React.FC<{ item: CarouselItemType }> = ({ item }) => (
 
 const PodcastCard: React.FC<{ item: PodcastCardType }> = ({ item }) => (
     <View style={styles.card}>
-        <Image source={item.image} style={styles.cardImage} />
+        <Image source={{ uri: item.coverURL }} style={styles.cardImage} />
         <ThemedText style={styles.cardTitle}>{item.title}</ThemedText>
     </View>
 );
+
 export type RootStackParamList = {
     Home: undefined;
     Settings: undefined;
     '(menu)/settings': undefined;
 };
+
 export default function HomeScreen() {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const [newPodcasts, setNewPodcasts] = useState<PodcastCardType[]>([]);
+    const [recommendedPodcasts, setRecommendedPodcasts] = useState<PodcastCardType[]>([]);
+    const [loading, setLoading] = useState(true); // Loading state
+
+    useEffect(() => {
+        const fetchPodcasts = async () => {
+            setLoading(true); // Start loading
+            try {
+                const querySnapshot = await getDocs(collection(db, 'podcasts'));
+                const fetchedPodcasts: PodcastCardType[] = [];
+
+                querySnapshot.docs.forEach((doc) => {
+                    const podcastData = doc.data();
+                    fetchedPodcasts.push({
+                        id: doc.id,
+                        title: podcastData.title,
+                        audioURL: podcastData.audioURL,
+                        coverURL: podcastData.coverURL,
+                        category: podcastData.category,
+                        description: podcastData.description,
+                        createdAt: podcastData.createdAt.toDate().toLocaleString(),
+                    });
+                });
+
+                // Sort by createdAt date for new podcasts
+                const sortedPodcasts = fetchedPodcasts.sort((a, b) => {
+                    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                });
+
+                setNewPodcasts(sortedPodcasts.slice(0, 3));
+
+                // Shuffle the recommended podcasts
+                const shuffledPodcasts = fetchedPodcasts.sort(() => Math.random() - 0.5);
+                setRecommendedPodcasts(shuffledPodcasts.slice(0, 3));
+            } catch (error) {
+                console.error('Error fetching podcasts:', error);
+            } finally {
+                setLoading(false); // End loading
+            }
+        };
+
+        fetchPodcasts();
+    }, []);
+
+    if (loading) {
+        return (
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#000" />
+                <ThemedText style={styles.loadingText}>Yükleniyor...</ThemedText>
+            </View>
+        );
+    }
 
     return (
         <SafeAreaView style={styles.container}>
@@ -85,12 +133,12 @@ export default function HomeScreen() {
                 <ThemedView style={styles.sectionContainer}>
                     <ThemedText type="subtitle">Yeni Çıkan Podcastler</ThemedText>
                     <FlatList
-                        data={podcastData}
+                        data={newPodcasts}
                         renderItem={({ item }) => <PodcastCard item={item} />}
                         keyExtractor={(item) => item.id}
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.cardListContainer} // Add padding here
+                        contentContainerStyle={styles.cardListContainer}
                     />
                 </ThemedView>
 
@@ -99,12 +147,12 @@ export default function HomeScreen() {
                 <ThemedView style={styles.sectionContainer}>
                     <ThemedText type="subtitle">Önerilen Podcastler</ThemedText>
                     <FlatList
-                        data={recommendedData}
+                        data={recommendedPodcasts}
                         renderItem={({ item }) => <PodcastCard item={item} />}
                         keyExtractor={(item) => item.id}
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        contentContainerStyle={styles.cardListContainer} // Add padding here
+                        contentContainerStyle={styles.cardListContainer}
                     />
                 </ThemedView>
             </ThemedView>
@@ -177,6 +225,18 @@ const styles = StyleSheet.create({
         marginVertical: 20,
     },
     cardListContainer: {
-        paddingVertical: 10, // Adjust this value to add space between the title and cards
+        paddingVertical: 10,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: '#FBF9F4', // Background color during loading
+    },
+    loadingText: {
+        marginTop: 10,
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#967d28',
     },
 });

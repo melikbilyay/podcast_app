@@ -34,7 +34,7 @@ export default function TabLayout() {
         <Tabs.Screen
             name="calendars"
             options={{
-                title: 'Takvim',
+                title: 'Etkinlikler',
                 tabBarIcon: ({ color, focused }) => (
                     <TabBarIcon name={focused ? 'calendar' : 'calendar-outline'} size={30} color={color} />
                 ),
